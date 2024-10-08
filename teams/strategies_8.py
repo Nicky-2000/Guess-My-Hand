@@ -157,7 +157,8 @@ def guessing(player, cards, round):
         for card in card_probabilities[player.name]:
             print(f'{card}: {card_probabilities[player.name][card]}, number of times guessed: {len([guess for guess in guesses[player.name] if card in guess])}')
         
-        guess = random.choices(list(card_probabilities[player.name].keys()), list(card_probabilities[player.name].values()), k=13 - round)
+        # guess = random.choices(list(card_probabilities[player.name].keys()), list(card_probabilities[player.name].values()), k=13 - round)
+        guess = Guess(random.choices(list(card_probabilities[player.name].keys()), list(card_probabilities[player.name].values()), k=13 - round), player)
         guesses[player.name].append(guess)
         return guess
     
@@ -174,33 +175,39 @@ def update_card_probs(cards, card_probabilities, player):
         if card in card_probabilities[player.name]:
             del card_probabilities[player.name][card]
 
+            for guess in guesses[player.name]:
+                guess.update([card])
+
     # remove partner's card
     partner_card = get_team_mates_exposed_cards(player)[-1]
     del card_probabilities[player.name][partner_card]
 
+    for guess in guesses[player.name]:
+        guess.update([partner_card])
+
     # first round only
-    if len(guesses[player.name]) == 0:
+    if len(guesses[player.name].cards) == 0:
         return
     
-    # remove cards in last guess that were played
-    last_guess = []
-    for card in guesses[player.name][-1]:
-        if card in card_probabilities[player.name]:
-            last_guess.append(card)
+    # # remove cards in last guess that were played
+    # last_guess = []
+    # for card in guesses[player.name].cards[-1]:
+    #     if card in card_probabilities[player.name]:
+    #         last_guess.append(card)
 
-    # count how many correct guesses 'remain' in that guess
-    played_guessed_right = set(guesses[player.name][-1]).intersection(set(get_team_mates_exposed_cards(player)))
-    last_cval = player.cVals[-1] - len(played_guessed_right)
+    # # count how many correct guesses 'remain' in that guess
+    # last_cval -= 1 if get_team_mates_exposed_cards(player)[-1] in last_guess else 0
 
-    # update probabilities of cards in last guess
-    for card in last_guess:
-        if card in card_probabilities[player.name]:
-            card_probabilities[player.name][card] = last_cval / len(last_guess)
+    # # update probabilities of cards in every previous guess
+    # for guess in guesses[player.name].cards:
+    #     for card in guess:
+    #         if card in card_probabilities[player.name]:
+    #             card_probabilities[player.name][card] = last_cval / len(last_guess)
 
-    # update probabilities of cards not in last guess
-    for card in set(cards) - set(last_guess):
-        if card in card_probabilities[player.name]:
-            card_probabilities[player.name][card] = (len(guesses[player.name][-1]) - 1 - last_cval) / (len(card_probabilities[player.name]) - len(last_guess))
+    # # update probabilities of cards not in last guess
+    # for card in set(cards) - set(last_guess):
+    #     if card in card_probabilities[player.name]:
+    #         card_probabilities[player.name][card] = (len(guesses[player.name][-1]) - 1 - last_cval) / (len(card_probabilities[player.name]) - len(last_guess))
 
     # # update probabilities of remaining valid cards
     # for card in get_viable_cards(cards, player):
@@ -233,3 +240,21 @@ def get_other_teams_exposed_cards(player) -> list:
         return player.exposed_cards["North"] + player.exposed_cards["South"]
     elif player.name == "North" or player.name == "South":
         return player.exposed_cards["East"] + player.exposed_cards["West"]
+
+class Guess():
+    def __init__(self, cards, player):
+        self.cards = cards
+        self.player = player
+        self.numerator = 1
+        self.denominator = len(cards)
+
+    def update(self, cards_played):
+        for card in cards_played:
+            if card in self.cards:
+                if card in get_team_mates_exposed_cards(self.player):
+                    self.numerator -= 1
+
+                self.denominator -= 1
+
+    def probability(self):
+        return self.numerator / self.denominator
