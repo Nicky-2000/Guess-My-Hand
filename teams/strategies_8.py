@@ -63,7 +63,7 @@ def get_card_order(cards, rank):
     """
     cards = sorted(cards, key=get_card_value)
     order = []
-    # rank -= 1  
+    # rank -= 1
     n = len(cards)
 
     for i in range(n, 0, -1):
@@ -89,7 +89,7 @@ def get_rank_from_order(played_order):
         rank += index * math.factorial(n - 1 - i)
         available_cards.pop(index)
 
-    return rank  # Weird hack Need to look at the ranks of the encoding and decoding. I think we might be off by 1
+    return rank # Weird hack Need to look at the ranks of the encoding and decoding. I think we might be off by 1
 
 def hash_combination(cards):
     simpleHand = [f"{card.value}{card.suit[0]}" for card in cards] 
@@ -132,18 +132,30 @@ def playing(player: Player, deck: Deck):
         # Hash our cards and figure out what we are going to play
         # simpleHand = [f"{card.value}{card.suit[0]}" for card in player.hand]
         ourHandSorted = sorted(player.hand, key=get_card_value)
-        ourHandHash[player.name] = hash_combination(ourHandSorted[num_cards_to_send:]) # Only hash the last X number of cards
+        
+        cards_to_hash = ourHandSorted[num_cards_to_send//2:num_cards_to_send//2 + 6] # Get the middle 6 cards
+        # cards_to_hash = ourHandSorted[3:9]
+        # cards_to_hash = ourHandSorted[num_cards_to_send:] # Get the first 7 cards
+
+        ourHandHash[player.name] = hash_combination(cards_to_hash) # Only hash the last X (6) number of cards
         print(f"Player: {player.name} Sending: {ourHandHash[player.name]}")
 
-        first_7_cards_to_play[player.name] = get_card_order(ourHandSorted[:num_cards_to_send], ourHandHash[player.name]) # Should prob use sorted hand here
+        cards_to_send = ourHandSorted[:num_cards_to_send//2] + ourHandSorted[num_cards_to_send//2 + 6:]
+        # cards_to_send = ourHandSorted[:3] + ourHandSorted[9:]
+        # cards_to_send = ourHandSorted[:num_cards_to_send]
+
+        first_7_cards_to_play[player.name] = get_card_order(cards_to_send, ourHandHash[player.name]) # Should prob use sorted hand here
+    
     if turn <= num_cards_to_send:
         if first_7_cards_to_play[player.name]:
             card_to_play = first_7_cards_to_play[player.name].pop(0) # get first element in list
             return player.hand.index(card_to_play)
+        
         else:
             raise ValueError("first_7_cards_to_play was not initialized properly.")
         # card_to_play = first_7_cards_to_play.pop(0)
         # return player.hand.index(card_to_play)
+    
     else: 
         return random.randint(0, len(player.hand) - 1)
 
