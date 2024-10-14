@@ -106,7 +106,7 @@ def create_hash_map(cards, index_to_care_about):
     print("Total Combos: ", totalCombos)
     hash_map = {i: [] for i in range(math.factorial(num_cards_to_send))} 
     
-    for combo in tqdm(combos, desc="Hashing combinations", unit="combo", total=totalCombos):
+    for combo in combos:
         # sorted_combo = sorted(combo, key=get_card_value)
         hash_value = hash_combination(combo)
         if hash_value == index_to_care_about:
@@ -132,10 +132,20 @@ def playing(player: Player, deck: Deck):
         # Hash our cards and figure out what we are going to play
         # simpleHand = [f"{card.value}{card.suit[0]}" for card in player.hand]
         ourHandSorted = sorted(player.hand, key=get_card_value)
-        ourHandHash[player.name] = hash_combination(ourHandSorted[num_cards_to_send:]) # Only hash the last X number of cards
-        print(f"Player: {player.name} Sending: {ourHandHash[player.name]}")
 
-        first_7_cards_to_play[player.name] = get_card_order(ourHandSorted[:num_cards_to_send], ourHandHash[player.name]) # Should prob use sorted hand here
+        three_min_four_max = ourHandSorted[0:3] + ourHandSorted[-4:]
+        print("three_min_four_max: ", three_min_four_max)
+        cards_to_hash = sorted((set(ourHandSorted) - set(three_min_four_max)),key=get_card_value)
+        ourHandHash[player.name] = hash_combination(cards_to_hash) # Only hash the cards we don't play
+
+        print(f"Player: {player.name} Sending: {ourHandHash[player.name]}")
+        first_7_cards_to_play[player.name] = get_card_order(three_min_four_max, ourHandHash[player.name]) # Should prob use sorted hand here
+        
+        # ourHandSorted = sorted(player.hand, key=get_card_value)
+        # ourHandHash[player.name] = hash_combination(ourHandSorted[num_cards_to_send:]) # Only hash the last X number of cards
+        # print(f"Player: {player.name} Sending: {ourHandHash[player.name]}")
+
+        # first_7_cards_to_play[player.name] = get_card_order(ourHandSorted[:num_cards_to_send], ourHandHash[player.name]) # Should prob use sorted hand here
     if turn <= num_cards_to_send:
         if first_7_cards_to_play[player.name]:
             card_to_play = first_7_cards_to_play[player.name].pop(0) # get first element in list
@@ -174,13 +184,18 @@ def guessing(player, cards, round):
         personal_hash_map = hash_map[player.name]
         personal_hash_index = hash_index_to_search[player.name]
         
-        max_team_mate_played_card = max(get_card_value(card) for card in teamMatesPlayedCards[0:num_cards_to_send])
+        # max_team_mate_played_card = max(get_card_value(card) for card in teamMatesPlayedCards[0:num_cards_to_send])
+        teamMatesFirst7 = teamMatesPlayedCards[0:num_cards_to_send].copy()
+        teamMatesFirst7 = sorted(teamMatesFirst7, key=get_card_value)
+        min_max_team_mate_played_card = teamMatesFirst7[-4]
+        max_min_team_mate_played_card = teamMatesFirst7[2]
 
         options = []
         all_cards_in_options = set()
         for combo in personal_hash_map[personal_hash_index]:
             if round > num_cards_to_send:
-                if (get_card_value(combo[0]) > max_team_mate_played_card 
+                if (get_card_value(combo[0]) > get_card_value(max_min_team_mate_played_card )
+                    and get_card_value(combo[-1]) < get_card_value(min_max_team_mate_played_card)
                     and set(combo).issubset(set(cards)) 
                     and not set(get_other_teams_exposed_cards(player)).intersection(set(combo))
                     and set(teamMatesPlayedCards[num_cards_to_send:]).issubset(set(combo)) # Check if the new cards played are in the combo
@@ -188,7 +203,8 @@ def guessing(player, cards, round):
                     options.append(combo)
                     all_cards_in_options.update(combo)
             else: 
-                if (get_card_value(combo[0]) > max_team_mate_played_card 
+                if (get_card_value(combo[0]) > get_card_value(max_min_team_mate_played_card)
+                    and get_card_value(combo[-1]) < get_card_value(min_max_team_mate_played_card)
                     and set(combo).issubset(set(cards)) 
                     and not set(get_other_teams_exposed_cards(player)).intersection(set(combo))
                     ):
@@ -204,14 +220,13 @@ def guessing(player, cards, round):
             for card in non_viable_cards:
                 if card in card_probabilities[player.name]:
                     del card_probabilities[player.name][card]
-            update_card_probs(cards, card_probabilities, player)
+            update_card_probs(cards, card_probabilities, player, round)
             
             card_probs = card_probabilities[player.name].copy()
             guess = sorted(card_probs, key=card_probs.get, reverse=True)[:13 - round]
             guesses[player.name].append(guess)
             return guess
-
-
+        
         chosen = random.choice(options)
         return list(set(chosen) - set(teamMatesPlayedCards))
     else:
@@ -219,7 +234,7 @@ def guessing(player, cards, round):
             init_card_probs(cards, card_probabilities, player)
             guesses[player.name] = []
 
-        update_card_probs(cards, card_probabilities, player)
+        update_card_probs(cards, card_probabilities, player, round)
         card_probs = card_probabilities[player.name].copy()
         guess = sorted(card_probs, key=card_probs.get, reverse=True)[:13 - round]
         guesses[player.name].append(guess)
@@ -232,7 +247,7 @@ def init_card_probs(cards, card_probabilities, player):
         card_probabilities[player.name][card] = 1
 
 
-def update_card_probs(cards, card_probabilities, player):
+def update_card_probs(cards, card_probabilities, player, round):
     # remove the cards that were played
     for card in set(cards) - set(get_viable_cards(cards, player)):
         if card in card_probabilities[player.name]:
@@ -277,16 +292,34 @@ def update_card_probs(cards, card_probabilities, player):
                 combined_probs_from_guesses[card] *= (prob_numerator_for_cards_not_in_guess / prob_denominator_for_cards_not_in_guess) if prob_denominator_for_cards_not_in_guess > 0 else 0
     # Now combine all the probabilities from each guess
 
-    max_team_mate_played_card = max(get_card_value(card) for card in team_mates_cards_set)
+    # max_team_mate_played_card = max(get_card_value(card) for card in team_mates_cards_set)
     
-    for card in combined_probs_from_guesses:
-        if get_card_value(card) > max_team_mate_played_card:
-            combined_probs_from_guesses[card] *= 1.3
+    # for card in combined_probs_from_guesses:
+        # if get_card_value(card) > max_team_mate_played_card:
+            # pass
+            # combined_probs_from_guesses[card] *= 100
 
     for card in set(cards) - set(get_viable_cards(cards, player)):
         if card in combined_probs_from_guesses and combined_probs_from_guesses[card] == 0:
             del combined_probs_from_guesses[card]
+    
+    if round > 7: 
+        teamMatesPlayedCards = get_team_mates_exposed_cards(player)
+        teamMatesFirst7 = teamMatesPlayedCards[0:num_cards_to_send].copy()
+        teamMatesFirst7 = sorted(teamMatesFirst7, key=get_card_value)
+        min_max_team_mate_played_card = teamMatesFirst7[-4]
+        max_min_team_mate_played_card = teamMatesFirst7[2]
 
+        for card in set(cards) - set(get_viable_cards(cards, player)):
+            if card in combined_probs_from_guesses:
+                if (get_card_value(card) > get_card_value(max_min_team_mate_played_card) 
+                    and get_card_value(card) < get_card_value(min_max_team_mate_played_card)
+                    ):
+                    combined_probs_from_guesses[card] *= 1.5
+
+                
+
+    print(len(combined_probs_from_guesses))
             
     card_probabilities[player.name] = combined_probs_from_guesses
 
