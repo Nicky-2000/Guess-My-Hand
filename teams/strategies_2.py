@@ -24,6 +24,7 @@ VALUE_ORDER = {
     "K": 12,
     "A": 8,
 }
+NUM_WINDOW_ROUNDS = 1
 
 def playing(player, deck):
     """
@@ -32,13 +33,10 @@ def playing(player, deck):
     if not player.hand:
         return None
 
-    print(" ")
-    print(f"-------------- Playing: {player.name}, Round: {len(player.played_cards) + 1} -----------------")
-
     hand_indices = [get_card_index(card) for card in player.hand]
     round = len(player.played_cards) + 1
     
-    if round == 1:
+    if round <= NUM_WINDOW_ROUNDS:
         card_to_play_index = get_best_window_lower_bound(hand_indices)
     else:
         card_to_play_index = get_max_card(hand_indices)
@@ -90,11 +88,35 @@ def get_guessable_cards(player, cards):
         g_cards = list(set(g_cards) - set(exposed))
     return g_cards
 
+def clean_guess_history(player, s_cards):
+    cleaned_guesses = []
+    cleaned_cvals = []
+    for r in range(0, len(player.guesses)):
+        r_guess = player.guesses[r]
+        cleaned_guess = [g for g in r_guess if g in s_cards]
+
+        # We need to decrement the cValue from our guess for every card that our partner has exposed from their hand that was in the guess.
+        cval_adjustment = 0
+        for partner_exposed in player.exposed_cards[PARTNERS[player.name]]:
+            if partner_exposed in cleaned_guess:
+                cval_adjustment += 1
+
+        # If cards were removed from the round also adjust the cValue
+        adj_cval = player.cVals[r] - cval_adjustment
+
+        # Write out the adjusted round
+        cleaned_guesses = cleaned_guesses + [cleaned_guess]
+        cleaned_cvals = cleaned_cvals + [adj_cval]
+
+    return cleaned_guesses, cleaned_cvals
+
 def get_card_prob(player, s_cards, round):
 
     P = 13 - round    # Number of cards in your Partner's hand
     T = len(s_cards)  # Number of cards that could be in partner's hand based on Strategy (all possible cards to build our guess from)
     probs = [1 / T] * T
+
+    cleaned_guesses, cleaned_cvals = clean_guess_history(player, s_cards)
 
     if P == T or round == 1:
         return probs
@@ -150,22 +172,16 @@ def guessing(player, cards, round):
     :param round: Integer representing the current round number.
     :return: List of guessed Card objects.
     """
-    print(" ")
-    print(f"-------------- Guessing: {player.name}, Round: {round} -----------------")
-
     # Determine the number of guesses needed
     num_guesses = 13 - round
-    print(f"Round {round}: Number of guesses needed: {num_guesses}")
 
     if num_guesses <= 0:
-        print(f"Round {round}: No guesses needed.")
         return []
 
     # Remove cards from list that are not valid guesses for this round.
     g_cards = get_guessable_cards(player, cards)
-    print(f"Round {round}: Guessable cards after filtering: {len(g_cards)}")
 
-    if round == 1:
+    if round <= NUM_WINDOW_ROUNDS:
         selected_guesses = use_best_window_lower_bound(player, g_cards)
         return selected_guesses
 
@@ -222,7 +238,7 @@ def get_best_window_lower_bound(hand_indices, window=13, highest=52):
     if not hand_indices:
         return 0  # Default lower bound when hand is empty
 
-    hand_sorted = sorted(hand_indices) 
+    hand_sorted = sorted(hand_indices)
     min_window = 0
     max_cards_in_window = 0
 
@@ -243,4 +259,6 @@ def get_best_window_lower_bound(hand_indices, window=13, highest=52):
             max_cards_in_window = num_cards
             min_window = min_card
 
+    if min_window == 0:
+        min_window = random.choice(hand_indices)
     return hand_indices.index(min_window)
